@@ -5,4 +5,4 @@ numpy
 matplotlib
 pillow
 scipy
-opencv-python-headless
+json
