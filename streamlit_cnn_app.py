@@ -1,101 +1,101 @@
-# streamlit_cnn_app.py
+# streamlit_cnn_debug_app.py
 import streamlit as st
+from streamlit_drawable_canvas import st_canvas
 import numpy as np
 import matplotlib.pyplot as plt
+from PIL import Image, ImageOps
+from scipy.ndimage import center_of_mass, shift
 import tensorflow as tf
 import os
-import json
-from tensorflow.keras.datasets import mnist
-from PIL import Image
 
 # ---------------------------
-# 모델 및 로그 로딩 함수
+# 모델 불러오기
 # ---------------------------
-MODEL_DIR = "saved_models"
-
-def get_latest_model():
-    models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".keras")]
-    if not models:
-        return None
-    models.sort(reverse=True)
-    return os.path.join(MODEL_DIR, models[0])
-
-def load_training_log(log_path="saved_models/training_log.json"):
-    if not os.path.exists(log_path):
-        return None
-    try:
-        with open(log_path, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return None
-
-def plot_training_log(log_data):
-    st.subheader("📈 학습 로그 (Accuracy / Loss)")
-    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-
-    ax[0].plot(log_data["accuracy"], label="Train Acc")
-    ax[0].plot(log_data["val_accuracy"], label="Val Acc")
-    ax[0].set_title("Accuracy")
-    ax[0].set_xlabel("Epoch")
-    ax[0].set_ylabel("Accuracy")
-    ax[0].legend()
-    ax[0].grid(True)
-
-    ax[1].plot(log_data["loss"], label="Train Loss")
-    ax[1].plot(log_data["val_loss"], label="Val Loss")
-    ax[1].set_title("Loss")
-    ax[1].set_xlabel("Epoch")
-    ax[1].set_ylabel("Loss")
-    ax[1].legend()
-    ax[1].grid(True)
-
-    st.pyplot(fig)
+MODEL_PATH = "saved_models"
+model_files = sorted([f for f in os.listdir(MODEL_PATH) if f.endswith(".keras")], reverse=True)
+model_path = os.path.join(MODEL_PATH, model_files[0]) if model_files else None
+model = tf.keras.models.load_model(model_path) if model_path else None
 
 # ---------------------------
-# 데이터 로딩 (X_test)
+# UI
 # ---------------------------
-(_, _), (X_test, y_test) = mnist.load_data()
-X_test = X_test.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+st.title("🧠 CNN 숫자 예측기 (디버그 모드)")
+st.markdown("그림판에 숫자를 그려서 예측 결과 및 내부 전처리 과정을 확인합니다.")
 
 # ---------------------------
-# 모델 로드
+# 캔버스
 # ---------------------------
-latest_model_path = get_latest_model()
-model = tf.keras.models.load_model(latest_model_path) if latest_model_path else None
+canvas_result = st_canvas(
+    fill_color="#000000",
+    stroke_width=30,
+    stroke_color="#FFFFFF",
+    background_color="#000000",
+    width=280,
+    height=280,
+    drawing_mode="freedraw",
+    key="canvas",
+)
 
 # ---------------------------
-# Streamlit UI
+# 이미지 전처리 함수
 # ---------------------------
-st.set_page_config(page_title="MNIST Test Sample Prediction", layout="centered")
-st.title("CNN 숫자 예측기 (MNIST 샘플 선택)")
-st.markdown("`X_test`의 실제 손글씨 샘플을 선택하여 CNN 모델이 예측합니다.")
+def preprocess_canvas(canvas_img):
+    img = canvas_img[:, :, 0]  # grayscale
+    img = Image.fromarray(img.astype("uint8")).convert("L")
+    img = ImageOps.invert(img)
+
+    # 이진화
+    arr = np.array(img)
+    arr[arr < 100] = 0
+    arr[arr >= 100] = 255
+
+    # 중심 이동
+    cy, cx = center_of_mass(arr)
+    shift_y = int(arr.shape[0] // 2 - cy)
+    shift_x = int(arr.shape[1] // 2 - cx)
+    arr = shift(arr, shift=(shift_y, shift_x), mode='constant', cval=0)
+
+    # 크기 조정 및 정규화
+    img = Image.fromarray(arr.astype("uint8")).resize((28, 28))
+    norm = np.array(img).astype("float32") / 255.0
+    norm = norm.reshape(1, 28, 28, 1)
+
+    return img, norm
 
 # ---------------------------
-# 학습 로그 시각화
+# 예측 실행
 # ---------------------------
-log_data = load_training_log()
-if log_data:
-    plot_training_log(log_data)
-else:
-    st.info(" 학습 로그 파일이 없거나 비어 있습니다.")
+if st.button("예측 실행") and canvas_result.image_data is not None:
+    if model is None:
+        st.error("모델이 로드되지 않았습니다.")
+    else:
+        processed_img, input_tensor = preprocess_canvas(canvas_result.image_data)
 
-# ---------------------------
-# 테스트 샘플 선택
-# ---------------------------
-if model:
-    st.markdown("### 테스트 샘플 선택")
-    sample_index = st.slider("샘플 인덱스 선택 (0~9999)", min_value=0, max_value=9999, value=0)
+        # 예측
+        prediction = model.predict(input_tensor)
+        predicted_label = int(np.argmax(prediction))
 
-    img = X_test[sample_index].reshape(28, 28)
-    label = y_test[sample_index]
+        st.subheader(f"🎯 예측된 숫자: **{predicted_label}**")
+        st.bar_chart(prediction[0])
 
-    st.image(img, caption=f"실제 숫자: {label}", width=150)
+        # 이미지 디버깅 저장
+        os.makedirs("debug_output", exist_ok=True)
+        processed_img.save("debug_output/canvas_input.png")
 
-    # 예측
-    pred = model.predict(X_test[sample_index].reshape(1, 28, 28, 1), verbose=0)
-    pred_class = int(np.argmax(pred))
+        # 시각화
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.image(canvas_result.image_data, caption="🖍 원본 캔버스 (280x280)", use_column_width=True)
+        with col2:
+            st.image(processed_img, caption="🎨 전처리 후 이미지 (28x28)", use_column_width=True)
+        with col3:
+            fig, ax = plt.subplots()
+            ax.imshow(np.array(processed_img), cmap="hot")
+            ax.set_title("🔥 입력 히트맵")
+            ax.axis("off")
+            st.pyplot(fig)
 
-    st.subheader(f" 예측된 숫자: **{pred_class}**")
-    st.bar_chart(pred[0])
-else:
-    st.warning("모델이 없습니다. 먼저 학습을 완료하고 다시 실행해주세요.")
+        st.success("예측 및 디버깅 이미지 저장 완료: `debug_output/canvas_input.png`")
+
+elif not model:
+    st.warning("모델을 먼저 학습해 주세요.")
