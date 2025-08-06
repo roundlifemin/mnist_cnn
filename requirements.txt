@@ -5,4 +5,4 @@ numpy
 matplotlib
 pillow
 scipy
-cv2
+opencv-python
