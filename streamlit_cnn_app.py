@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 MODEL_DIR = "saved_models"
 
 def get_latest_model():
-    models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".h5")]
+    models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".keras")]
     if not models:
         return None
     models.sort(reverse=True)
