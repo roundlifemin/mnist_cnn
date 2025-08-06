@@ -27,8 +27,11 @@ def get_latest_model():
 def load_training_log(log_path="saved_models/training_log.json"):
     if not os.path.exists(log_path):
         return None
-    with open(log_path, "r") as f:
-        return json.load(f)
+    try:
+        with open(log_path, "r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return None
 
 def plot_training_log(log_data):
     st.subheader("학습 로그 (Accuracy / Loss)")
@@ -61,8 +64,9 @@ model = tf.keras.models.load_model(latest_model_path) if latest_model_path else 
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.title("CNN 숫자 예측기 (MNIST)")
-st.markdown("그림판에 **0~9** 숫자를 그리세요.")
+st.set_page_config(page_title="MNIST CNN 숫자 예측기", layout="centered")
+st.title(" CNN 숫자 예측기 (MNIST)")
+st.markdown("**그림판에 0~9 숫자를 그리면 CNN 모델이 예측합니다.**")
 
 # ---------------------------
 # 학습 로그 출력
@@ -70,10 +74,13 @@ st.markdown("그림판에 **0~9** 숫자를 그리세요.")
 log_data = load_training_log()
 if log_data:
     plot_training_log(log_data)
+else:
+    st.info(" 학습 로그 파일이 없거나 비어 있습니다. 모델을 먼저 학습하세요.")
 
 # ---------------------------
-# 캔버스
+# 캔버스 UI
 # ---------------------------
+st.markdown("###숫자 입력")
 canvas_result = st_canvas(
     fill_color="#000000",
     stroke_width=30,
@@ -110,11 +117,11 @@ if st.button("예측 실행") and canvas_result.image_data is not None and model
     img_arr = img_arr.reshape(1, 28, 28, 1)
 
     # 예측
-    pred = model.predict(img_arr)
+    pred = model.predict(img_arr, verbose=0)
     pred_class = int(np.argmax(pred))
 
     st.subheader(f"예측된 숫자: **{pred_class}**")
     st.bar_chart(pred[0])
 
 elif not model:
-    st.warning("모델이 없습니다. 먼저 학습해 주세요.")
+    st.warning("모델이 없습니다. 먼저 학습을 완료하고 다시 실행해주세요.")
