@@ -7,6 +7,7 @@ from scipy.ndimage import center_of_mass, shift
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import os
+import cv2
 
 # ---------------------------
 # 모델 로드
@@ -46,16 +47,19 @@ canvas_result = st_canvas(
 # 예측 버튼
 # ---------------------------
 if st.button("예측 실행") and canvas_result.image_data is not None and model:
-    img = canvas_result.image_data[:, :, 0]  # 흑백 채널만 사용
-    img = Image.fromarray(img.astype("uint8")).resize((28, 28))  # 크기 조정
-
-    # 색 반전 (MNIST: 흰 배경에 검정 숫자)
+    img = canvas_result.image_data[:, :, 0]  # 흑백 채널만
+    img = Image.fromarray(img.astype("uint8")).resize((28, 28))
     img = ImageOps.invert(img)
 
-    # NumPy 변환 및 이진화
+    # NumPy 변환 및 이진화 (threshold ↓)
     img_arr = np.array(img)
-    img_arr[img_arr < 128] = 0
-    img_arr[img_arr >= 128] = 255
+    img_arr = cv2.GaussianBlur(img_arr, (3, 3), 0)  # 흐림 효과 추가
+    img_arr[img_arr < 80] = 0
+    img_arr[img_arr >= 80] = 255
+
+    # Padding 추가 (MNIST 대비 캔버스는 외곽으로 붙는 경향 있음)
+    img_arr = np.pad(img_arr, pad_width=4, mode='constant', constant_values=0)
+    img_arr = cv2.resize(img_arr, (28, 28))  # 다시 28x28로 축소
 
     # 중심 정렬
     cy, cx = center_of_mass(img_arr)
@@ -71,12 +75,12 @@ if st.button("예측 실행") and canvas_result.image_data is not None and model
     pred = model.predict(img_arr)
     pred_class = np.argmax(pred)
 
-    # 출력
-    st.subheader(f"예측된 숫자: **{pred_class}**")
+    # 결과 출력
+    st.subheader(f"🎯 예측된 숫자: **{pred_class}**")
     st.bar_chart(pred[0])
 
-    # 디버깅: 전처리 이미지 확인
-    st.markdown("**전처리된 입력 이미지** (중심정렬, 이진화 적용):")
+    # 디버깅용 시각화
+    st.markdown("**전처리된 입력 이미지 (패딩, 블러, 중심정렬)**")
     fig, ax = plt.subplots()
     ax.imshow(img_arr[0].reshape(28, 28), cmap='gray')
     ax.axis("off")
