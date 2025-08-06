@@ -6,3 +6,4 @@ matplotlib
 pillow
 scipy
 opencv-python
+opencv-python-headless
