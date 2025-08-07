@@ -32,7 +32,6 @@ def enhance_contrast(image_arr):
 
 def preprocess_and_predict(image_arr):
     results = {}
-
     enhanced_img = enhance_contrast(image_arr)
 
     methods = {
@@ -43,25 +42,23 @@ def preprocess_and_predict(image_arr):
     }
 
     for method_name, binary_img in methods.items():
-        # Dilation
+        # Adaptive 깨짐 방지: 픽셀 수 너무 적으면 제외
+        if np.sum(binary_img > 0) < 20:
+            continue
+
         kernel = np.ones((2, 2), np.uint8)
         dilated = cv2.dilate(binary_img, kernel, iterations=1)
 
-        # 중심 정렬
         cy, cx = center_of_mass(dilated)
         shift_y = int(round(dilated.shape[0] // 2 - cy))
         shift_x = int(round(dilated.shape[1] // 2 - cx))
         shifted = shift(dilated, shift=(shift_y, shift_x), mode='constant', cval=0)
 
-        # 28x28 resize
         resized = cv2.resize(shifted, (28, 28), interpolation=cv2.INTER_AREA)
-
-        # 정규화
         norm = resized.astype("float32") / 255.0
         norm = np.clip(norm, 0.01, 1.0)
         reshaped = norm.reshape(1, 28, 28, 1)
 
-        # 예측
         pred = model.predict(reshaped, verbose=0)
         pred_class = int(np.argmax(pred))
         confidence = float(np.max(pred))
@@ -80,9 +77,9 @@ def preprocess_and_predict(image_arr):
 # ----------------------------
 st.set_page_config(page_title="웹캠 숫자 인식기", layout="centered")
 st.title("📷 웹캠 숫자 인식기 (MNIST 기반 최종 개선 버전)")
-st.markdown("흰 종이에 **굵은 검정색 펜**으로 숫자를 쓰고 웹캠으로 촬영해주세요.")
+st.markdown("흰 종이에 **굵은 검정 펜**으로 숫자를 쓰고 웹캠으로 촬영해주세요.")
 
-image_data = st.camera_input("📸 숫자를 찍어서 업로드해주세요:")
+image_data = st.camera_input("📸 숫자를 촬영하세요:")
 
 if image_data and model:
     image = Image.open(image_data).convert("L")
@@ -90,9 +87,12 @@ if image_data and model:
 
     results = preprocess_and_predict(gray_np)
 
-    # ----------------------------
-    # Adaptive 우선 적용 로직
-    # ----------------------------
+    # 예측 불일치 경고
+    unique_preds = set([v["prediction"] for v in results.values()])
+    if len(unique_preds) > 1:
+        st.warning("전처리 방식별 예측이 일치하지 않습니다. 모델이 혼동하고 있을 수 있습니다.")
+
+    # Adaptive 우선 적용
     adaptive = results.get("Adaptive Gaussian")
     best = max(results.items(), key=lambda x: x[1]['confidence'])
 
@@ -101,10 +101,9 @@ if image_data and model:
     final_prob = best[1]["prob"]
     final_method = best[0]
 
-    # Adaptive 신뢰도 > 0.5 이고, 다른 방식과 다르면 우선 적용
-    if adaptive and adaptive["confidence"] > 0.5:
-        if adaptive["prediction"] != final_label:
-            st.warning(f"Adaptive 방식에서는 {adaptive['prediction']}로 예측했습니다. 예측이 엇갈릴 수 있습니다.")
+    if adaptive:
+        if adaptive["prediction"] != final_label and adaptive["confidence"] > 0.5:
+            st.info(f"Adaptive 방식에서는 **{adaptive['prediction']}**로 예측함 (신뢰도: {adaptive['confidence']:.2f})")
             final_label = adaptive["prediction"]
             final_conf = adaptive["confidence"]
             final_prob = adaptive["prob"]
@@ -114,15 +113,13 @@ if image_data and model:
     st.caption(f"사용된 전처리 방식: {final_method}")
     st.bar_chart(final_prob)
 
-    # ----------------------------
-    # 전처리별 시각화
-    # ----------------------------
+    # 전처리별 결과 시각화
     st.subheader("전처리별 예측 결과")
     for method, data in results.items():
         st.markdown(f"**{method}** - 예측: {data['prediction']}, 신뢰도: {data['confidence']:.2f}")
         st.image(data['processed'], width=120)
 
-    # 입력 히트맵
+    # 히트맵
     st.subheader("입력 이미지 히트맵")
     fig, ax = plt.subplots()
     ax.imshow(gray_np, cmap='hot')
