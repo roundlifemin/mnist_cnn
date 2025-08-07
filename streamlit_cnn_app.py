@@ -3,9 +3,8 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageOps
 import cv2
-import io
-from scipy.ndimage import center_of_mass, shift
 import os
+from scipy.ndimage import center_of_mass, shift
 import matplotlib.pyplot as plt
 
 # ----------------------------
@@ -23,28 +22,27 @@ model_path = get_latest_model()
 model = tf.keras.models.load_model(model_path) if model_path else None
 
 # ----------------------------
-# 타이틀
+# 전처리 보조 함수
 # ----------------------------
-st.title("웹캠 숫자 인식기 (MNIST 기반 개선 버전)")
-st.markdown("흰 종이에 검은색 펜으로 0~9 숫자를 작성 후 웹캠으로 촬영해보세요.")
-
-# ----------------------------
-# 웹캠 입력
-# ----------------------------
-image_data = st.camera_input("숫자가 보이도록 웹캠으로 촬영")
+def enhance_contrast(image_arr):
+    # 밝기 정규화
+    norm = cv2.normalize(image_arr, None, 0, 255, cv2.NORM_MINMAX).astype("uint8")
+    # 블러로 노이즈 제거
+    blurred = cv2.GaussianBlur(norm, (5, 5), 0)
+    # 배경 제거용 반전
+    inverted = cv2.bitwise_not(blurred)
+    return inverted
 
 def apply_preprocessing(image_arr):
     results = {}
+    enhanced_img = enhance_contrast(image_arr)
 
-    # 히스토그램 평활화 (명암 대비 향상)
-    norm_img = cv2.normalize(image_arr, None, 0, 255, cv2.NORM_MINMAX).astype("uint8")
-
-    # 여러 전처리 방법 적용
+    # 다양한 이진화 방법
     methods = {
-        "Adaptive Gaussian": cv2.adaptiveThreshold(norm_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        "Adaptive Gaussian": cv2.adaptiveThreshold(enhanced_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                    cv2.THRESH_BINARY_INV, 11, 2),
-        "Otsu": cv2.threshold(norm_img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1],
-        "Manual 100": np.where(norm_img > 100, 0, 255).astype("uint8")
+        "Otsu": cv2.threshold(enhanced_img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1],
+        "Manual 100": np.where(enhanced_img > 100, 0, 255).astype("uint8")
     }
 
     for key, img in methods.items():
@@ -74,35 +72,42 @@ def apply_preprocessing(image_arr):
     return results
 
 # ----------------------------
-# 예측 처리
+# Streamlit UI
 # ----------------------------
-if image_data is not None and model:
-    # 이미지 로드
-    image = Image.open(image_data).convert("L")  # 그레이스케일
+st.set_page_config(page_title="웹캠 숫자 인식기", layout="centered")
+st.title("📷 웹캠 숫자 인식기 (MNIST 기반 개선 버전)")
+st.markdown("흰 종이에 검은색 펜으로 숫자를 쓰고 웹캠으로 촬영해보세요.")
+
+image_data = st.camera_input("숫자가 명확히 보이도록 촬영해주세요")
+
+if image_data and model:
+    image = Image.open(image_data).convert("L")
     gray_np = np.array(image)
 
-    # 전처리 적용
+    # 전처리 및 예측
     results = apply_preprocessing(gray_np)
-
-    # 결과 선택
     best = max(results.items(), key=lambda x: x[1]['confidence'])
     best_label = best[1]['prediction']
     best_conf = best[1]['confidence']
 
-    st.subheader(f"최종 예측: **{best_label}** (신뢰도: {best_conf:.2f})")
+    # 결과 출력
+    st.subheader(f"✅ 최종 예측: **{best_label}** (신뢰도: {best_conf:.2f})")
     st.bar_chart(best[1]['prob'])
 
-    # 전처리별 결과 출력
+    # 전처리별 비교
+    st.subheader("🧪 전처리별 예측 결과")
     for method, data in results.items():
-        st.markdown(f"### {method} (예측: {data['prediction']}, 신뢰도: {data['confidence']:.2f})")
-        st.image(data['processed'], width=140)
+        st.markdown(f"**{method}** - 예측: {data['prediction']}, 신뢰도: {data['confidence']:.2f}")
+        st.image(data['processed'], width=120)
 
-    # 입력 히트맵 출력
-    st.subheader("입력 이미지 히트맵")
+    # 히트맵
+    st.subheader("🔥 입력 이미지 히트맵")
     fig, ax = plt.subplots()
     ax.imshow(gray_np, cmap='hot')
     ax.axis("off")
     st.pyplot(fig)
 
+elif not model:
+    st.warning("⚠️ 모델이 없습니다. 먼저 학습한 .keras 모델을 saved_models 폴더에 저장하세요.")
 else:
-    st.info("먼저 웹캠으로 숫자를 촬영해주세요.")
+    st.info("📸 웹캠으로 숫자 이미지를 먼저 촬영해주세요.")
