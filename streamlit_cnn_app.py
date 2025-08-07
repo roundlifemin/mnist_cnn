@@ -30,7 +30,7 @@ def load_training_log(log_path="saved_models/training_log.json"):
         return None
 
 def plot_training_log(log_data):
-    st.subheader("📈 학습 로그 (Accuracy / Loss)")
+    st.subheader("학습 로그 (Accuracy / Loss)")
     fig, ax = plt.subplots(1, 2, figsize=(10, 4))
 
     ax[0].plot(log_data["accuracy"], label="Train Acc")
