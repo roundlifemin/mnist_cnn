@@ -11,6 +11,7 @@ import os
 # 모델 로딩
 # ----------------------------
 def get_latest_model():
+    MODEL_DIR = "saved_models"
     models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".keras")]
     if not models:
         return None
