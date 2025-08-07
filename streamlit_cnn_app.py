@@ -1,16 +1,18 @@
+# streamlit_cnn_app.py
 import streamlit as st
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
-from PIL import Image, ImageOps
-import cv2
-import io
-from scipy.ndimage import center_of_mass, shift
+import os
+import json
+from tensorflow.keras.datasets import mnist
+from PIL import Image
 
-# ----------------------------
-# 모델 로딩
-# ----------------------------
-# 모델 로드 (가장 최신 모델)
+# ---------------------------
+# 모델 및 로그 로딩 함수
+# ---------------------------
 MODEL_DIR = "saved_models"
+
 def get_latest_model():
     models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".keras")]
     if not models:
@@ -18,65 +20,82 @@ def get_latest_model():
     models.sort(reverse=True)
     return os.path.join(MODEL_DIR, models[0])
 
-model_path = get_latest_model()
-model = tf.keras.models.load_model(model_path) if model_path else None
+def load_training_log(log_path="saved_models/training_log.json"):
+    if not os.path.exists(log_path):
+        return None
+    try:
+        with open(log_path, "r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return None
 
-# MODEL_PATH = "saved_models/mnist_cnn_model_latest.keras"  # 가장 최근 모델로 경로 수정
-# model = tf.keras.models.load_model(MODEL_PATH)
+def plot_training_log(log_data):
+    st.subheader("📈 학습 로그 (Accuracy / Loss)")
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
 
-# ----------------------------
-# 타이틀
-# ----------------------------
-st.title("웹캠 숫자 인식기 (MNIST 기반)")
-st.markdown("흰 종이에 검은색 펜으로 0~9 숫자를 작성 후 웹캠으로 촬영해보세요.")
+    ax[0].plot(log_data["accuracy"], label="Train Acc")
+    ax[0].plot(log_data["val_accuracy"], label="Val Acc")
+    ax[0].set_title("Accuracy")
+    ax[0].set_xlabel("Epoch")
+    ax[0].set_ylabel("Accuracy")
+    ax[0].legend()
+    ax[0].grid(True)
 
-# ----------------------------
-# 웹캠 입력
-# ----------------------------
-image_data = st.camera_input("숫자가 보이도록 웹캠으로 촬영")
+    ax[1].plot(log_data["loss"], label="Train Loss")
+    ax[1].plot(log_data["val_loss"], label="Val Loss")
+    ax[1].set_title("Loss")
+    ax[1].set_xlabel("Epoch")
+    ax[1].set_ylabel("Loss")
+    ax[1].legend()
+    ax[1].grid(True)
 
-if image_data is not None:
-    # 이미지 로드
-    image = Image.open(image_data)
-    st.image(image, caption="입력 이미지", use_column_width=True)
+    st.pyplot(fig)
 
-    # ----------------------------
-    # 이미지 전처리
-    # ----------------------------
-    # RGB → 그레이스케일
-    gray = ImageOps.grayscale(image)
+# ---------------------------
+# 데이터 로딩 (X_test)
+# ---------------------------
+(_, _), (X_test, y_test) = mnist.load_data()
+X_test = X_test.reshape(-1, 28, 28, 1).astype("float32") / 255.0
 
-    # numpy 변환
-    gray_np = np.array(gray)
+# ---------------------------
+# 모델 로드
+# ---------------------------
+latest_model_path = get_latest_model()
+model = tf.keras.models.load_model(latest_model_path) if latest_model_path else None
 
-    # Adaptive 이진화 or Otsu
-    _, bin_img = cv2.threshold(gray_np, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.set_page_config(page_title="MNIST Test Sample Prediction", layout="centered")
+st.title("CNN 숫자 예측기 (MNIST 샘플 선택)")
+st.markdown("`X_test`의 실제 손글씨 샘플을 선택하여 CNN 모델이 예측합니다.")
 
-    # 중심 정렬
-    cy, cx = center_of_mass(bin_img)
-    shift_y = int(bin_img.shape[0] // 2 - cy)
-    shift_x = int(bin_img.shape[1] // 2 - cx)
-    shifted_img = shift(bin_img, shift=(shift_y, shift_x), mode='constant', cval=0)
-
-    # 리사이즈 → 28x28
-    resized = Image.fromarray(shifted_img.astype("uint8")).resize((28, 28))
-
-    # 정규화 및 차원 확장
-    input_arr = np.array(resized).astype("float32") / 255.0
-    input_arr = input_arr.reshape(1, 28, 28, 1)
-
-    # ----------------------------
-    # 예측
-    # ----------------------------
-    pred = model.predict(input_arr, verbose=0)
-    pred_class = np.argmax(pred)
-
-    st.subheader(f"예측된 숫자: **{pred_class}**")
-    st.bar_chart(pred[0])
-
-    # 히트맵 시각화
-    st.subheader("입력 이미지 히트맵")
-    st.image(input_arr.reshape(28, 28), width=150, clamp=True, channels="GRAY")
-
+# ---------------------------
+# 학습 로그 시각화
+# ---------------------------
+log_data = load_training_log()
+if log_data:
+    plot_training_log(log_data)
 else:
-    st.info("먼저 웹캠으로 숫자를 촬영해주세요.")
+    st.info(" 학습 로그 파일이 없거나 비어 있습니다.")
+
+# ---------------------------
+# 테스트 샘플 선택
+# ---------------------------
+if model:
+    st.markdown("### 테스트 샘플 선택")
+    sample_index = st.slider("샘플 인덱스 선택 (0~9999)", min_value=0, max_value=9999, value=0)
+
+    img = X_test[sample_index].reshape(28, 28)
+    label = y_test[sample_index]
+
+    st.image(img, caption=f"실제 숫자: {label}", width=150)
+
+    # 예측
+    pred = model.predict(X_test[sample_index].reshape(1, 28, 28, 1), verbose=0)
+    pred_class = int(np.argmax(pred))
+
+    st.subheader(f" 예측된 숫자: **{pred_class}**")
+    st.bar_chart(pred[0])
+else:
+    st.warning("모델이 없습니다. 먼저 학습을 완료하고 다시 실행해주세요.")
