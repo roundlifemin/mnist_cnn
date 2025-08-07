@@ -5,6 +5,7 @@ from PIL import Image, ImageOps
 import cv2
 import io
 from scipy.ndimage import center_of_mass, shift
+import os
 
 # ----------------------------
 # 모델 로딩
