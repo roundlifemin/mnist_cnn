@@ -92,7 +92,7 @@ if image_data and model:
     pred_counter = Counter(predictions)
 
     if len(pred_counter) > 1:
-        st.warning("⚠️ 전처리별 예측이 일치하지 않습니다. 혼동 가능성이 있습니다.")
+        st.warning("전처리별 예측이 일치하지 않습니다. 혼동 가능성이 있습니다.")
 
     # 다수결 기반 예측 선택
     voted_label, vote_count = pred_counter.most_common(1)[0]
@@ -108,24 +108,24 @@ if image_data and model:
     # ----------------------------
     # 결과 출력
     # ----------------------------
-    st.subheader(f"✅ 최종 예측: **{final_label}** (신뢰도: {final_conf:.2f})")
+    st.subheader(f"최종 예측: **{final_label}** (신뢰도: {final_conf:.2f})")
     st.caption(f"사용된 전처리 방식: {best_method}")
     st.bar_chart(final_prob)
 
     # 전처리별 결과 시각화
-    st.subheader("🧪 전처리별 예측 결과")
+    st.subheader("전처리별 예측 결과")
     for method, data in results.items():
         st.markdown(f"**{method}** - 예측: {data['prediction']}, 신뢰도: {data['confidence']:.2f}")
         st.image(data['processed'], width=120)
 
     # 히트맵
-    st.subheader("🔥 입력 이미지 히트맵")
+    st.subheader("입력 이미지 히트맵")
     fig, ax = plt.subplots()
     ax.imshow(gray_np, cmap='hot')
     ax.axis("off")
     st.pyplot(fig)
 
 elif not model:
-    st.warning("⚠️ 모델(.keras)이 없습니다. 먼저 학습한 모델을 `saved_models/` 폴더에 저장하세요.")
+    st.warning("모델(.keras)이 없습니다. 먼저 학습한 모델을 `saved_models/` 폴더에 저장하세요.")
 else:
-    st.info("📸 웹캠으로 숫자 이미지를 먼저 촬영해주세요.")
+    st.info("웹캠으로 숫자 이미지를 먼저 촬영해주세요.")
