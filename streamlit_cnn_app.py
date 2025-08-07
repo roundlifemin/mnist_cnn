@@ -9,8 +9,20 @@ from scipy.ndimage import center_of_mass, shift
 # ----------------------------
 # 모델 로딩
 # ----------------------------
-MODEL_PATH = "saved_models/mnist_cnn_model_latest.keras"  # 가장 최근 모델로 경로 수정
-model = tf.keras.models.load_model(MODEL_PATH)
+# 모델 로드 (가장 최신 모델)
+MODEL_DIR = "saved_models"
+def get_latest_model():
+    models = [f for f in os.listdir(MODEL_DIR) if f.endswith(".keras")]
+    if not models:
+        return None
+    models.sort(reverse=True)
+    return os.path.join(MODEL_DIR, models[0])
+
+model_path = get_latest_model()
+model = tf.keras.models.load_model(model_path) if model_path else None
+
+# MODEL_PATH = "saved_models/mnist_cnn_model_latest.keras"  # 가장 최근 모델로 경로 수정
+# model = tf.keras.models.load_model(MODEL_PATH)
 
 # ----------------------------
 # 타이틀
