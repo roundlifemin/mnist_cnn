@@ -6,6 +6,7 @@ import cv2
 import os
 from scipy.ndimage import center_of_mass, shift
 import matplotlib.pyplot as plt
+from collections import Counter
 
 # ----------------------------
 # 모델 로딩
@@ -87,46 +88,44 @@ if image_data and model:
 
     results = preprocess_and_predict(gray_np)
 
-    # 예측 불일치 경고
-    unique_preds = set([v["prediction"] for v in results.values()])
-    if len(unique_preds) > 1:
-        st.warning("전처리 방식별 예측이 일치하지 않습니다. 모델이 혼동하고 있을 수 있습니다.")
+    predictions = [v["prediction"] for v in results.values()]
+    pred_counter = Counter(predictions)
 
-    # Adaptive 우선 적용
-    adaptive = results.get("Adaptive Gaussian")
-    best = max(results.items(), key=lambda x: x[1]['confidence'])
+    if len(pred_counter) > 1:
+        st.warning("⚠️ 전처리별 예측이 일치하지 않습니다. 혼동 가능성이 있습니다.")
 
-    final_label = best[1]["prediction"]
-    final_conf = best[1]["confidence"]
-    final_prob = best[1]["prob"]
-    final_method = best[0]
+    # 다수결 기반 예측 선택
+    voted_label, vote_count = pred_counter.most_common(1)[0]
+    voted_candidates = {k: v for k, v in results.items() if v["prediction"] == voted_label}
 
-    if adaptive:
-        if adaptive["prediction"] != final_label and adaptive["confidence"] > 0.5:
-            st.info(f"Adaptive 방식에서는 **{adaptive['prediction']}**로 예측함 (신뢰도: {adaptive['confidence']:.2f})")
-            final_label = adaptive["prediction"]
-            final_conf = adaptive["confidence"]
-            final_prob = adaptive["prob"]
-            final_method = "Adaptive Gaussian"
+    # 그 중 신뢰도 가장 높은 방식 선택
+    best_method, best_result = max(voted_candidates.items(), key=lambda x: x[1]["confidence"])
 
-    st.subheader(f"최종 예측: **{final_label}** (신뢰도: {final_conf:.2f})")
-    st.caption(f"사용된 전처리 방식: {final_method}")
+    final_label = best_result["prediction"]
+    final_conf = best_result["confidence"]
+    final_prob = best_result["prob"]
+
+    # ----------------------------
+    # 결과 출력
+    # ----------------------------
+    st.subheader(f"✅ 최종 예측: **{final_label}** (신뢰도: {final_conf:.2f})")
+    st.caption(f"사용된 전처리 방식: {best_method}")
     st.bar_chart(final_prob)
 
     # 전처리별 결과 시각화
-    st.subheader("전처리별 예측 결과")
+    st.subheader("🧪 전처리별 예측 결과")
     for method, data in results.items():
         st.markdown(f"**{method}** - 예측: {data['prediction']}, 신뢰도: {data['confidence']:.2f}")
         st.image(data['processed'], width=120)
 
     # 히트맵
-    st.subheader("입력 이미지 히트맵")
+    st.subheader("🔥 입력 이미지 히트맵")
     fig, ax = plt.subplots()
     ax.imshow(gray_np, cmap='hot')
     ax.axis("off")
     st.pyplot(fig)
 
 elif not model:
-    st.warning("모델(.keras)이 없습니다. 먼저 학습한 모델을 `saved_models/` 폴더에 저장하세요.")
+    st.warning("⚠️ 모델(.keras)이 없습니다. 먼저 학습한 모델을 `saved_models/` 폴더에 저장하세요.")
 else:
-    st.info("웹캠으로 숫자 이미지를 먼저 촬영해주세요.")
+    st.info("📸 웹캠으로 숫자 이미지를 먼저 촬영해주세요.")
